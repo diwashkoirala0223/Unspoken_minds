@@ -46,7 +46,9 @@ Remember: You're not providing therapy or diagnosis. You're a supportive compani
     });
 
     if (!response.ok) {
-      throw new Error("OpenAI API request failed");
+      const errorData = await response.json().catch(() => ({}));
+      console.error("OpenAI API Error Response:", errorData);
+      throw new Error(`OpenAI API request failed: ${response.status} ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();
