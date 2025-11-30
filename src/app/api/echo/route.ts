@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenAI } from "@google/genai";
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,13 +12,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Convert messages to Gemini format
-    const geminiMessages = messages.map((msg: any) => ({
-      role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content }]
-    }));
+    // Initialize Gemini AI
+    const genAI = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
 
-    // Add system prompt as first user message
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+    });
+
+    // Add system prompt as first message
     const systemPrompt = `You are Echo, an empathetic AI mental health companion for men aged 15-40. Your purpose is to provide a safe, non-judgmental space for emotional exploration and support.
 
 Key principles:
@@ -34,41 +38,30 @@ Key principles:
 
 Remember: You're not providing therapy or diagnosis. You're a supportive companion helping users process emotions and develop healthy mental health habits.`;
 
+    // Convert messages to Gemini format
     const contents = [
       {
         role: "user",
-        parts: [{ text: systemPrompt }]
+        parts: [{ text: systemPrompt }],
       },
-      ...geminiMessages.filter((msg: any) => msg.role !== "system")
+      ...messages.map((msg: any) => ({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }],
+      })),
     ];
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.8,
-            maxOutputTokens: 500,
-          },
-        }),
-      }
-    );
+    const result = await model.generateContent({
+      contents,
+      generationConfig: {
+        temperature: 0.8,
+        maxOutputTokens: 500,
+      },
+    });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("Gemini API Error Response:", errorData);
-      throw new Error(`Gemini API request failed: ${response.status} ${JSON.stringify(errorData)}`);
-    }
+    const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || 
+      "I'm here to support you. Could you share more about what's on your mind?";
 
-    const data = await response.json();
-    const assistantMessage = data.candidates[0].content.parts[0].text;
-
-    return NextResponse.json({ message: assistantMessage });
+    return NextResponse.json({ message: responseText });
   } catch (error) {
     console.error("Echo API Error:", error);
     return NextResponse.json(
